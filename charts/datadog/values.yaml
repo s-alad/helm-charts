@@ -642,6 +642,11 @@ datadog:
     # datadog.privateActionRunner.apiKeyOnlyEnrollment -- Enroll using only the API key, without requiring an app key
     apiKeyOnlyEnrollment: false
 
+    # datadog.privateActionRunner.splitEnabled -- Run the Private Action Runner on-demand in supported Agent configurations
+    ## Only takes effect on non-FIPS Agents 7.84.0 and newer. Unsupported Agents fall back to the monolithic PAR.
+    # @ignored
+    splitEnabled: true
+
   ## Enable logs agent and provide custom configs
   logs:
     # datadog.logs.enabled -- Enables this to activate Datadog Agent log collection

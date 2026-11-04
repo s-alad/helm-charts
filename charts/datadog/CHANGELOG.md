@@ -1,5 +1,9 @@
 # Datadog changelog
 
+## 3.268.0
+
+* `datadog.privateActionRunner.splitEnabled` now defaults to `true` on Agent 7.84.0+. Set `splitEnabled: false` to opt back into the monolithic runner.
+
 ## 3.267.0
 
 * Add `datadog.kaiScheduler.enabled` to enable KAI Scheduler PodGroup collection in the Cluster Agent, which tags pods with their KAI workload and queue, and grant the Cluster Agent `list` and `watch` on KAI PodGroups (requires Agent and Cluster Agent 7.86.0+). With `datadog.gpuMonitoring.enabled`, it also maps KAI fractional GPUs to the containers using them.
