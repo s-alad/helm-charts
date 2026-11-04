@@ -869,24 +869,24 @@ node Private Action Runner.
 {{/*
 Return true if the node Private Action Runner can run packet captures through system-probe.
 Requires datadog.privateActionRunner.enabled, Linux, and Agent 7.86.0 or newer: older Agents do
-not serve the capture socket. Floating tags such as `latest` or `7` resolve to the chart's default
-Agent version, so the feature stays off for them; only agents.image.doNotCheckTag bypasses the gate
-(which agents.image.digest users need, since the tag still decides the version). Other non-semver
-tags are treated as latest here so the helper never fails on them. GKE Autopilot and GDC are excluded: the Private Action Runner is not supported there.
+not serve the capture socket. Only agents.image.doNotCheckTag bypasses the version check (which
+agents.image.digest users need, since the tag still decides the version). Otherwise the resolved
+tag must be a semantic version >= 7.86.0: floating tags such as `latest` or `7` resolve to the
+chart's default Agent version, and any other tag that is not a version keeps the feature off.
+GKE Autopilot and GDC are excluded: the Private Action Runner is not supported there.
 */}}
 {{- define "should-enable-private-action-runner-packet-capture" -}}
 {{- $par := .Values.datadog.privateActionRunner -}}
+{{- $enabled := false -}}
 {{- if and $par.enabled ($par.packetCapture | default dict).enabled (eq .Values.targetSystem "linux") (not .Values.providers.gke.autopilot) (not .Values.providers.gke.gdc) -}}
-{{- /* Despite its name, get-agent-version-for-discovery is the generic resolved Agent version, "latest" for non-semver tags. */ -}}
-{{- $version := include "get-agent-version-for-discovery" . -}}
-{{- if or .Values.agents.image.doNotCheckTag (eq $version "latest") (semverCompare ">=7.86.0-0" $version) -}}
-true
-{{- else -}}
-false
+{{- $version := include "get-agent-version" . -}}
+{{- if .Values.agents.image.doNotCheckTag -}}
+{{- $enabled = true -}}
+{{- else if regexMatch "^v?[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$" $version -}}
+{{- $enabled = semverCompare ">=7.86.0-0" $version -}}
 {{- end -}}
-{{- else -}}
-false
 {{- end -}}
+{{- $enabled -}}
 {{- end -}}
 
 {{/*

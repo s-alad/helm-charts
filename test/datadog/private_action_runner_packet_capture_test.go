@@ -241,7 +241,7 @@ func TestPrivateActionRunnerPacketCapture_AgentVersion(t *testing.T) {
 		{name: "7.86 release candidate", tag: "7.86.0-rc.1", enabled: true},
 		{name: "7.86", tag: "7.86.0", enabled: true},
 		{name: "7.86 with build suffix", tag: "7.86.1-jmx", enabled: true},
-		{name: "non-semver tag", tag: "main-abc1234", doNotCheckTag: true, enabled: true},
+		{name: "non-semver tag with doNotCheckTag", tag: "main-abc1234", doNotCheckTag: true, enabled: true},
 		{name: "old tag with doNotCheckTag", tag: "7.80.0", doNotCheckTag: true, enabled: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -289,6 +289,50 @@ func TestPrivateActionRunnerPacketCapture_WithDefaultDiscovery(t *testing.T) {
 	sp, found := getContainer(t, ds.Spec.Template.Spec.Containers, "system-probe")
 	require.True(t, found)
 	assert.Equal(t, []string{"system-probe", "--config=/etc/datadog-agent/system-probe.yaml"}, sp.Command)
+}
+
+// Without doNotCheckTag a tag that is not a version never reaches the packet capture gate: the chart's
+// own version checks reject it first. The gate itself keeps the feature off for such tags.
+func TestPrivateActionRunnerPacketCapture_NonSemverTagWithoutDoNotCheckTag(t *testing.T) {
+	_, err := common.RenderChart(t, common.HelmCommand{
+		ReleaseName: "datadog",
+		ChartPath:   "../../charts/datadog",
+		ShowOnly:    []string{"templates/daemonset.yaml"},
+		Values:      []string{"../../charts/datadog/values.yaml"},
+		Overrides:   pcapOverrides("main-abc1234"),
+	})
+	require.ErrorContains(t, err, "invalid semantic version")
+}
+
+// assertNoPacketCaptureOnProvider checks that a render with packet capture requested carries no capture
+// volume or mount, and that system-probe (when rendered) keeps the capabilities of the same render
+// without packet capture.
+func assertNoPacketCaptureOnProvider(t *testing.T, manifest string, cmd common.HelmCommand) {
+	t.Helper()
+	var ds appsv1.DaemonSet
+	common.Unmarshal(t, manifest, &ds)
+	_, found := pcapVolume(ds)
+	assert.False(t, found, "capture socket volume must not be rendered")
+	for _, c := range append(ds.Spec.Template.Spec.Containers, ds.Spec.Template.Spec.InitContainers...) {
+		_, found := pcapMount(c)
+		assert.False(t, found, "container %s must not mount the capture socket", c.Name)
+		assert.NotContains(t, getEnvVarMap(c.Env), pcapSocketEnv, "container %s", c.Name)
+	}
+
+	baselineCmd := cmd
+	baselineCmd.Overrides = copyMap(cmd.Overrides)
+	delete(baselineCmd.Overrides, "datadog.privateActionRunner.packetCapture.enabled")
+	baselineManifest, err := common.RenderChart(t, baselineCmd)
+	require.NoError(t, err)
+	var baseline appsv1.DaemonSet
+	common.Unmarshal(t, baselineManifest, &baseline)
+	sp, spFound := getContainer(t, ds.Spec.Template.Spec.Containers, "system-probe")
+	baseSP, baseFound := getContainer(t, baseline.Spec.Template.Spec.Containers, "system-probe")
+	require.Equal(t, baseFound, spFound, "packet capture must not change whether system-probe runs")
+	if spFound {
+		assert.Equal(t, baseSP.SecurityContext, sp.SecurityContext, "packet capture must not change system-probe's securityContext")
+	}
+	assert.Equal(t, len(baseline.Spec.Template.Spec.Volumes), len(ds.Spec.Template.Spec.Volumes))
 }
 
 func TestPrivateActionRunnerPacketCapture_RequiresPrivateActionRunner(t *testing.T) {
